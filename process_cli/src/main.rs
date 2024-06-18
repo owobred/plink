@@ -111,9 +111,30 @@ async fn discover_song(path: &PathBuf, db_url: &str) {
 
     let db = database::Database::connect(db_url).await.expect("failed to connect to db");
     debug!("querying database");
-    let closest = db.find_similar_to(spectrogram[10000].clone(), 100.0, 50).await.unwrap();
 
-    println!("{closest:?}");
+    let mut hashmap = std::collections::HashMap::new();
+
+    for sample in &spectrogram[8800..8800+2000] {
+        let closest = db.find_similar_to(sample.to_owned(), 100.0, 100).await.unwrap();
+        let n = closest.len();
+
+        for (index, (song_id, _sample_id, _distance)) in closest.into_iter().enumerate() {
+            if !hashmap.contains_key(&song_id) {
+                hashmap.insert(song_id, 0);
+            }
+            // TODO: some kind of avg distance vs number of occurances would be nice
+            *hashmap.get_mut(&song_id).unwrap() += n - index;
+        }
+        
+    }
+
+    let mut top = hashmap.into_iter().collect::<Vec<_>>();
+    top.sort_by_key(|(_, v)| *v);
+    top.reverse();
+
+    for (song_id, matches) in &top[..10] {
+        println!("{song_id}: {matches}")
+    }
 }
 
 #[instrument(level = "trace")]
