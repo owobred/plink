@@ -62,7 +62,7 @@ async fn main() {
             )
             .await
         }
-        Command::Discover { path, db } => (),
+        Command::Discover { path, db } => discover_song(&path, &db).await,
     };
 }
 
@@ -99,6 +99,21 @@ async fn upload_song(
     .await;
     let elapsed = start.elapsed();
     info!(?elapsed, "completed insert");
+}
+
+async fn discover_song(path: &PathBuf, db_url: &str) {
+    let spectrogram_config = process::SpectrogramConfig {
+        fft_len: 1280,
+        overlap: 320,
+    };
+
+    let spectrogram = handle_file(path, &spectrogram_config);
+
+    let db = database::Database::connect(db_url).await.expect("failed to connect to db");
+    debug!("querying database");
+    let closest = db.find_similar_to(spectrogram[10000].clone(), 100.0, 50).await.unwrap();
+
+    println!("{closest:?}");
 }
 
 #[instrument(level = "trace")]

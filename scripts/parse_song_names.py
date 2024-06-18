@@ -62,7 +62,7 @@ for file in os.listdir(directory):
 def format_command(parsed: ParsedFile) -> str:
     path = f"{directory}/{parsed.filename}"
     sung_date = f"{parsed.date.day:02}/{parsed.date.month:02}/{parsed.date.year}"
-    return f"RUST_LOG=\"trace,symphonia=warn\" cargo run -r -- upload --title \"{parsed.title}\" --singer-id 2 --db \"{database}\" --sung-at \"{sung_date}\"  \"{path}\""
+    return f"RUST_LOG=\"trace,symphonia=warn\" ../target/release/process_cli upload --title \"{parsed.title}\" --singer-id 2 --db \"{database}\" --sung-at \"{sung_date}\"  \"{path}\""
 
 for song in songs:
     print(format_command(song))

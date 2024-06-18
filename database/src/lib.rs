@@ -16,24 +16,26 @@ impl Database {
 
     pub async fn find_similar_to(
         &self,
-        vector: Vector,
-        thresh: f32,
-    ) -> Result<Vec<Vector>, sqlx::Error> {
-        let result: Vec<(f32,)> = sqlx::query_as(
+        vector: impl Into<Vector>,
+        thresh: f64,
+        limit: i64,
+    ) -> Result<Vec<(i64, i64, f64)>, sqlx::Error> {
+        let vector: Vector = vector.into();
+        let result: Vec<(i64, i64, f64)> = sqlx::query_as(
             "
-            select vec <-> $1 from segments
+            select song_id, segment_index, vec <-> $1 from segments
             where vec <-> $1 < $2
             order by vec <-> $1
-        ",
+            limit $3
+            ",
         )
         .bind(vector)
         .bind(thresh)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
-        println!("{result:?}");
-
-        todo!()
+        Ok(result)
     }
 
     #[instrument(skip(self, spectrogram), ret, level = "trace")]
