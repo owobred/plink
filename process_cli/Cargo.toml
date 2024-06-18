@@ -1,0 +1,12 @@
+[package]
+name = "process_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.7", features = ["cargo"] }
+symphonia = { version = "0.5.4", features = ["mp3", "opt-simd"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+process = { path = "../process/" }
+image = { version = "0.25.1", default-features = false, features = ["png"] }

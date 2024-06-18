@@ -1,0 +1,3 @@
+[workspace]
+members = [ "database","process", "process_cli"]
+resolver = "2"
