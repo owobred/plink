@@ -1,16 +1,27 @@
-struct Singer {
-    id: u16,
-    name: String,
+#[derive(Debug)]
+pub struct Singer {
+    pub id: u16,
+    pub name: String,
 }
 
-struct Song {
-    id: u64,
-    title: String,
-    singer_id: u16,
+#[derive(Debug)]
+
+pub struct Song {
+    pub id: u64,
+    pub metadata: SongMetadata,
 }
 
-struct Sample {
-    song_id: u64,
-    sample_index: u32,
-    sample: Vec<f32>,
+#[derive(Debug)]
+pub struct SongMetadata {
+    pub title: String,
+    pub singer_id: u16,
+    pub date_first_sung: time::Date,
+    pub local_path: String,
+}
+
+#[derive(Debug)]
+pub struct Sample {
+    pub song_id: u64,
+    pub sample_index: u32,
+    pub sample: Vec<f32>,
 }

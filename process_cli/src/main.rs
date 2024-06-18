@@ -1,4 +1,4 @@
-use clap::{arg, command, value_parser};
+use clap::{arg, command, value_parser, Parser};
 use std::{fmt::Debug, path::PathBuf};
 use symphonia::core::{
     audio::{AudioBuffer, Signal},
@@ -8,6 +8,27 @@ use symphonia::core::{
     probe::Hint,
 };
 use tracing::{debug, info, instrument, trace, warn};
+
+#[derive(Debug, clap::Parser)]
+enum Command {
+    Upload {
+        path: PathBuf,
+        #[arg[long, long]]
+        title: String,
+        #[arg[short, long]]
+        singer_id: usize,
+        #[arg[short, long]]
+        db: String,
+        // TODO: figure out how to make clap parse the date
+        #[arg[short, long]]
+        sung_at: String,
+    },
+    Discover {
+        path: PathBuf,
+        #[arg[long, long]]
+        db: String,
+    },
+}
 
 #[tokio::main]
 async fn main() {
@@ -20,29 +41,71 @@ async fn main() {
             .init()
     }
 
-    let matches = command!()
-        .arg(
-            arg!([file] "The file name to process")
-                .required(true)
-                .value_parser(value_parser!(PathBuf)),
-        )
-        .arg(arg!(-t --title <TITLE> "The title of the song"))
-        .arg(arg!(-d --database <DATABASE> "URL to the postgres database"))
-        .get_matches();
+    match Command::parse() {
+        Command::Upload {
+            path,
+            title,
+            singer_id,
+            db,
+            sung_at,
+        } => {
+            upload_song(
+                path,
+                &title,
+                singer_id,
+                &db,
+                time::Date::parse(
+                    &sung_at,
+                    time::macros::format_description!("[day]/[month]/[year]"),
+                )
+                .unwrap(),
+            )
+            .await
+        }
+        Command::Discover { path, db } => (),
+    };
+}
 
-    let file = matches.get_one::<PathBuf>("file").unwrap();
+async fn upload_song(
+    file: PathBuf,
+    title: &str,
+    singer_id: usize,
+    db_url: &str,
+    sung_at: time::Date,
+) {
+    let spectrogram_config = process::SpectrogramConfig {
+        fft_len: 1280,
+        overlap: 320,
+    };
+
     let start = std::time::Instant::now();
-    let spectrogram = handle_file(file);
+    let spectrogram = handle_file(&file, &spectrogram_config);
     let elapsed = start.elapsed();
     info!(?elapsed, "completed parse");
+
+    // debug_to_image(&spectrogram);
     let start = std::time::Instant::now();
-    persist_to_db(&matches.get_one::<String>("database").unwrap(), spectrogram).await;
+    persist_to_db(
+        db_url,
+        spectrogram,
+        &database::models::SongMetadata {
+            title: title.to_string(),
+            singer_id: singer_id as u16,
+            date_first_sung: sung_at,
+            local_path: file.to_str().unwrap().to_string(),
+        },
+        &spectrogram_config,
+    )
+    .await;
     let elapsed = start.elapsed();
     info!(?elapsed, "completed insert");
 }
 
 #[instrument(level = "trace")]
-fn handle_file(filename: &PathBuf) -> Vec<Vec<f32>> {
+fn handle_file(
+    filename: &PathBuf,
+    spectrogram_config: &process::SpectrogramConfig,
+) -> Vec<Vec<f32>> {
     debug!("opening file");
     let registry = symphonia::default::get_codecs();
     let probe = symphonia::default::get_probe();
@@ -103,21 +166,49 @@ fn handle_file(filename: &PathBuf) -> Vec<Vec<f32>> {
     let first_channel = &channels[0];
     let spect_gen: process::SpectrogramGenerator<f32> = process::SpectrogramGenerator::default();
     let start = std::time::Instant::now();
-    let spectrogram = spect_gen.run(
-        &first_channel,
-        &process::SpectrogramConfig {
-            fft_len: 1280,
-            overlap: 640 + 320,
-        },
-    );
+    let spectrogram = spect_gen.run(&first_channel, &spectrogram_config);
     let elapsed = start.elapsed();
     debug!(?elapsed, "spectrogram generated");
     spectrogram
 }
 
-#[instrument(skip_all, level = "trace")]
-async fn persist_to_db(url: &str, spectrogram: Vec<Vec<f32>>) {
-    let database = database::Database::connect(url).await.expect("failed to connect to database");
+fn debug_to_image(spectrogram: &Vec<Vec<f32>>) {
+    let (width, height) = (spectrogram.len(), spectrogram[0].len());
+    let mut canvas: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+        image::ImageBuffer::new(height as u32, width as u32);
+    canvas
+        .rows_mut()
+        .zip(spectrogram.into_iter())
+        .for_each(|(row, spect_row)| {
+            row.zip(spect_row.into_iter()).for_each(|(canvas, value)| {
+                *canvas = image::Rgb([(value * u8::MAX as f32) as u8; 3])
+            })
+        });
+    let get_rotated_idiot = image::imageops::rotate270(&canvas);
+    get_rotated_idiot.save("spect.png").unwrap();
+}
 
-    database.insert_sectrogram_for_song(1, spectrogram, 44100, 1280, 640 + 320).await.expect("failed to insert spectrogram");
+#[instrument(skip_all, level = "trace")]
+async fn persist_to_db(
+    url: &str,
+    spectrogram: Vec<Vec<f32>>,
+    song_metadata: &database::models::SongMetadata,
+    spectrogram_config: &process::SpectrogramConfig,
+) {
+    let database = database::Database::connect(url)
+        .await
+        .expect("failed to connect to database");
+
+    let song_id = database
+        .insert_new_song(
+            spectrogram,
+            song_metadata,
+            44_100,
+            spectrogram_config.fft_len,
+            spectrogram_config.overlap,
+        )
+        .await
+        .expect("failed to insert song");
+
+    info!(song_id, metadata=?song_metadata, spec_cofig=?spectrogram_config, "inserted song")
 }

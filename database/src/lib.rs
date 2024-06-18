@@ -1,5 +1,5 @@
 use pgvector::Vector;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 pub mod models;
 
@@ -36,7 +36,36 @@ impl Database {
         todo!()
     }
 
-    pub async fn insert_sectrogram_for_song(
+    #[instrument(skip(self, spectrogram), ret, level = "trace")]
+    pub async fn insert_new_song(
+        &self,
+        spectrogram: Vec<Vec<f32>>,
+        metadata: &models::SongMetadata,
+        samplerate: usize,
+        fft_size: usize,
+        fft_overlap: usize,
+    ) -> Result<i64, sqlx::Error> {
+        let (song_id,): (i64,) = sqlx::query_as(
+            "
+            insert into songs(title, singer_id, date_first_sung, local_path)
+            values ($1, $2, $3, $4)
+            returning id
+        ",
+        )
+        .bind(&metadata.title)
+        .bind(metadata.singer_id as i16)
+        .bind(metadata.date_first_sung)
+        .bind(&metadata.local_path)
+        .fetch_one(&self.pool)
+        .await?;
+
+        self.insert_sectrogram_for_song(song_id, spectrogram, samplerate, fft_size, fft_overlap).await?;
+
+        Ok(song_id)
+    }
+
+    #[instrument(skip(self, spectrogram), level = "trace")]
+    async fn insert_sectrogram_for_song(
         &self,
         song_id: i64,
         spectrogram: Vec<Vec<f32>>,
@@ -66,13 +95,16 @@ impl Database {
             let end_time_ms = (end_offset as f64 * 1.0 / samplerate as f64 * 1000.0) as i64;
             copy_in
                 .send(
-                    format!("{song_id}|{index}|{}|{start_time_ms}|{end_time_ms}\n", format!("{segment:?}").replace(" ", ""))
-                        .as_bytes(),
+                    format!(
+                        "{song_id}|{index}|{}|{start_time_ms}|{end_time_ms}\n",
+                        format!("{segment:?}").replace(" ", "")
+                    )
+                    .as_bytes(),
                 )
                 .await?;
         }
         let rows_affected = copy_in.finish().await?;
-        debug!(n_rows=rows_affected, "affected rows");
+        debug!(n_rows = rows_affected, "affected rows");
 
         Ok(())
     }

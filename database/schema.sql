@@ -1,12 +1,12 @@
 create extension if not exists vector cascade;
 
 create table singers (
-    id smallint primary key,
+    id smallserial primary key,
     s_name varchar not null
 );
 
 create table songs (
-    id bigint not null primary key,
+    id bigserial not null primary key,
     title varchar not null,
     singer_id smallint references singers(id),
     -- TODO: make this utc or something idk
@@ -16,7 +16,7 @@ create table songs (
 );
 
 create table segments (
-    song_id bigint not null,
+    song_id bigint not null references songs(id),
     segment_index bigint not null,
     -- vector is size of fft output as each is a line of the spectrogram
     vec vector(640) not null,
