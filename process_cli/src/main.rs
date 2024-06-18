@@ -1,5 +1,5 @@
 use clap::{arg, command, value_parser};
-use std::path::PathBuf;
+use std::{fmt::Debug, path::PathBuf};
 use symphonia::core::{
     audio::{AudioBuffer, Signal},
     formats::FormatOptions,
@@ -9,7 +9,8 @@ use symphonia::core::{
 };
 use tracing::{debug, info, instrument, trace, warn};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     {
         use tracing_subscriber::prelude::*;
 
@@ -26,17 +27,22 @@ fn main() {
                 .value_parser(value_parser!(PathBuf)),
         )
         .arg(arg!(-t --title <TITLE> "The title of the song"))
+        .arg(arg!(-d --database <DATABASE> "URL to the postgres database"))
         .get_matches();
 
     let file = matches.get_one::<PathBuf>("file").unwrap();
     let start = std::time::Instant::now();
-    handle_file(file);
+    let spectrogram = handle_file(file);
     let elapsed = start.elapsed();
-    info!(?elapsed, "completed parse")
+    info!(?elapsed, "completed parse");
+    let start = std::time::Instant::now();
+    persist_to_db(&matches.get_one::<String>("database").unwrap(), spectrogram).await;
+    let elapsed = start.elapsed();
+    info!(?elapsed, "completed insert");
 }
 
 #[instrument(level = "trace")]
-fn handle_file(filename: &PathBuf) {
+fn handle_file(filename: &PathBuf) -> Vec<Vec<f32>> {
     debug!("opening file");
     let registry = symphonia::default::get_codecs();
     let probe = symphonia::default::get_probe();
@@ -67,6 +73,7 @@ fn handle_file(filename: &PathBuf) {
             &symphonia::core::codecs::DecoderOptions::default(),
         )
         .unwrap();
+    info!(params=?track.codec_params, "read codec params");
     let track_id = track.id;
 
     let mut channels: Vec<Vec<f32>> = Vec::new();
@@ -80,7 +87,6 @@ fn handle_file(filename: &PathBuf) {
         let mut converted: AudioBuffer<f32> =
             AudioBuffer::new(decoded.frames() as u64, decoded.spec().to_owned());
         decoded.convert(&mut converted);
-        // let inner: symphonia::core::audio::AudioBuffer<f32> = decoded.make_equivalent();
         let planes = converted.planes();
         let planes_slice = planes.planes();
         if channels.len() != planes_slice.len() {
@@ -93,44 +99,25 @@ fn handle_file(filename: &PathBuf) {
             .for_each(|(d, v)| d.extend(*v));
     }
 
-    // let pchannel = &channels[0][100_000..1_000_000];
-    let pchannel = &channels[0];
+    // TODO: maybe do something for each channel idk?
+    let first_channel = &channels[0];
     let spect_gen: process::SpectrogramGenerator<f32> = process::SpectrogramGenerator::default();
     let start = std::time::Instant::now();
     let spectrogram = spect_gen.run(
-        &pchannel,
+        &first_channel,
         &process::SpectrogramConfig {
-            fft_len: 640,
-            overlap: 320,
+            fft_len: 1280,
+            overlap: 640 + 320,
         },
     );
     let elapsed = start.elapsed();
-    println!("spectrogram took {elapsed:?}");
-    let max_value = *spectrogram
-        .iter()
-        .map(|row| {
-            row.into_iter()
-                .max_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Greater))
-                .unwrap()
-        })
-        .max_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Greater))
-        .unwrap();
-    let (width, height) = (spectrogram.len(), spectrogram[0].len() / 2);
-    dbg!((width, height));
-    dbg!(max_value);
-    let mut canvas: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
-        image::ImageBuffer::new(height as u32, width as u32);
-    canvas
-        .rows_mut()
-        .zip(spectrogram.into_iter())
-        .for_each(|(row, spect_row)| {
-            row.zip(spect_row.into_iter()).for_each(|(canvas, value)| {
-                *canvas = image::Rgb([(value
-                     * u8::MAX as f32) as u8; 3])
-            })
-        });
-    let get_rotated_idiot = image::imageops::rotate270(&canvas);
-    get_rotated_idiot.save("spect.png").unwrap();
+    debug!(?elapsed, "spectrogram generated");
+    spectrogram
+}
 
-    todo!()
+#[instrument(skip_all, level = "trace")]
+async fn persist_to_db(url: &str, spectrogram: Vec<Vec<f32>>) {
+    let database = database::Database::connect(url).await.expect("failed to connect to database");
+
+    database.insert_sectrogram_for_song(1, spectrogram, 44100, 1280, 640 + 320).await.expect("failed to insert spectrogram");
 }

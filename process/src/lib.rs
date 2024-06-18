@@ -61,6 +61,8 @@ impl<T: Float> SpectrogramGenerator<T> {
             .map(|complex| {
                 complex
                     .into_iter()
+                    // half the the fft is mirrored due to complex inputs
+                    .take(config.fft_len / 2)
                     .map(|val| val.norm_sqr().sqrt())
                     .collect::<Vec<_>>()
             })

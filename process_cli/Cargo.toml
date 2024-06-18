@@ -10,3 +10,6 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 process = { path = "../process/" }
 image = { version = "0.25.1", default-features = false, features = ["png"] }
+tokio = { version = "1.38.0", features = ["full"] }
+database = { path = "../database/" }
+sqlx = { version = "0.7.4", features = ["runtime-tokio"], default-features = false }

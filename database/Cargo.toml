@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+pgvector = { version = "0.3.2", features = ["sqlx"] }
+sqlx = { version = "0.7.4", features = ["postgres"] }
+tracing = "0.1.40"
