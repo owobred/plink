@@ -47,6 +47,8 @@ enum Command {
         results_per: usize,
         #[arg(long, short, default_value_t = 200)]
         max_concurrency: usize,
+        #[arg(long, short, action = clap::ArgAction::SetTrue)]
+        json: bool,
     },
 }
 
@@ -56,8 +58,11 @@ async fn main() {
         use tracing_subscriber::prelude::*;
 
         tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer())
-            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .with_filter(tracing_subscriber::EnvFilter::from_default_env()),
+            )
             .init()
     }
 
@@ -89,7 +94,8 @@ async fn main() {
             max_distance,
             results_per,
             max_concurrency,
-        } => discover_song(&path, &db, max_distance, results_per, max_concurrency).await,
+            json,
+        } => discover_song(&path, &db, max_distance, results_per, max_concurrency, json).await,
     };
 }
 
@@ -226,9 +232,12 @@ async fn discover_song(
     max_distance: f64,
     results_per_query: usize,
     max_concurrency: usize,
+    output_json: bool,
 ) {
     info!("generating spectrogram");
+    let start = std::time::Instant::now();
     let spectrogram = handle_file(path, SPECTROGRAM_CONFIG);
+    let spectrogram_time = start.elapsed();
 
     let db = database::Database::connect(db_url)
         .await
@@ -240,6 +249,7 @@ async fn discover_song(
     let (send, mut recv) = tokio::sync::mpsc::unbounded_channel();
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
 
+    let start = std::time::Instant::now();
     for sample in spectrogram {
         let db = db.clone();
         let send = send.clone();
@@ -269,20 +279,52 @@ async fn discover_song(
             *hashmap.get_mut(&song_id).unwrap() += n - index;
         }
     }
+    let query_time = start.elapsed();
 
     let mut top = hashmap.into_iter().collect::<Vec<_>>();
     top.sort_by_key(|(_, v)| *v);
     top.reverse();
 
+    let singers = db.get_singers().await.expect("failed to fetch from db");
+
     let n_to_display = 10;
-    info!("top {n_to_display} matches");
+
+    let mut result = DiscoverResult {
+        entries: Vec::with_capacity(n_to_display),
+        timings: DiscoverTimings {
+            spectrogram: spectrogram_time,
+            query: query_time,
+        },
+    };
+
     for (song_id, score) in &top[..n_to_display] {
         let song_info = db
             .get_song(*song_id)
             .await
             .expect("database error")
             .unwrap();
-        info!("{} [id={song_id}]: score={score}", song_info.metadata.title);
+        let singer_id = song_info.metadata.singer_id;
+
+        result.entries.push(DiscoverEntry {
+            song: song_info.into(),
+            singer_name: singers.get(&singer_id).unwrap().name.clone(),
+            score: *score,
+        })
+    }
+
+    info!("top {n_to_display} matches");
+    for entry in &result.entries {
+        info!(
+            "{} [id={}]: score={}",
+            entry.song.title, entry.song.id, entry.score
+        );
+    }
+
+    if output_json {
+        println!(
+            "{}",
+            serde_json::to_string(&result).expect("failed to serialize json")
+        )
     }
 }
 
@@ -428,4 +470,42 @@ enum ParseResult {
     Error {
         error: String,
     },
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct DiscoverResult {
+    entries: Vec<DiscoverEntry>,
+    timings: DiscoverTimings,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct DiscoverEntry {
+    song: Song,
+    singer_name: String,
+    score: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct Song {
+    id: i64,
+    title: String,
+    date_sung: time::Date,
+    file_path: String,
+}
+
+impl From<database::models::Song> for Song {
+    fn from(value: database::models::Song) -> Self {
+        Self {
+            id: value.id,
+            title: value.metadata.title,
+            date_sung: value.metadata.date_first_sung,
+            file_path: value.metadata.local_path,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct DiscoverTimings {
+    spectrogram: std::time::Duration,
+    query: std::time::Duration,
 }

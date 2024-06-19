@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use pgvector::Vector;
 use tracing::{debug, instrument};
 
@@ -114,14 +116,14 @@ impl Database {
     }
 
     pub async fn get_song(&self, song_id: i64) -> Result<Option<models::Song>, sqlx::Error> {
-        let r: Option<(i64, String, i16, time::Date, String)> = sqlx::query_as(
+        let results: Option<(i64, String, i16, time::Date, String)> = sqlx::query_as(
             "select id, title, singer_id, date_first_sung, local_path from songs where id = $1",
         )
         .bind(song_id)
         .fetch_optional(&self.pool)
         .await?;
 
-        let (_, title, singer_id, date_first_sung, local_path) = match r {
+        let (_, title, singer_id, date_first_sung, local_path) = match results {
             Some(r) => r,
             None => return Ok(None),
         };
@@ -135,5 +137,20 @@ impl Database {
                 local_path,
             },
         }))
+    }
+
+    pub async fn get_singers(&self) -> Result<HashMap<i16, models::Singer>, sqlx::Error> {
+        let results: Vec<(i16, String)> = sqlx::query_as("select id, s_name from singers")
+            .fetch_all(&self.pool)
+            .await?;
+        let singers = results
+            .into_iter()
+            .map(|(id, name)| models::Singer { id, name })
+            .collect::<Vec<_>>();
+
+        Ok(singers
+            .into_iter()
+            .map(|singer| (singer.id, singer))
+            .collect())
     }
 }

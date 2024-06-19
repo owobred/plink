@@ -13,3 +13,6 @@ A mediocre version of shazam designed specifically for identifying what song neu
 2. enter `/process_cli` use `cargo run -r -- discover --db <url> <file_path>`
     1. Other config options can be found in the command help
 3. Will output a list of potential matches
+
+> [!note]
+> You can pass the `--json` flag to `discover` to get a json-formatted output
