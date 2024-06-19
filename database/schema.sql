@@ -28,9 +28,12 @@ create table segments (
     primary key (song_id, segment_index)
 );
 
--- for building index, consider using
+-- for building index consider using:
 -- SET max_parallel_maintenance_workers = 7;
 -- SET maintenance_work_mem = '10GB';
+
+-- furthermore, I would suggest initalizing the database *without* an index
+-- and adding the index once all of the vectors are inserted
 create index on segments using hnsw (vec vector_l2_ops);
 
 -- add known singers
