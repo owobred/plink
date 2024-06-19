@@ -1,3 +1,5 @@
+"""Utilities for parsing file names from [the google drive of songs](https://drive.google.com/drive/folders/118gr4QuaGQGKfJ0X8VBCytvPjdzPayPY)"""
+
 from dataclasses import dataclass
 from datetime import date
 import re
