@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import date
 import re
+from typing import Optional
 
 
 v3_date_regex = re.compile(
@@ -12,7 +13,7 @@ v1_date_regex = re.compile(
     r"\[(?P<full_date>(?P<month>\d?\d)(?:-|／)(?P<day>\d?\d)(?:-|／)(?P<year>\d\d))\] (?P<title>.+)(?: \[\d+\])?\..+"
 )
 evil_date_regex = re.compile(
-    r"(?P<title>.+) \((?P<full_date>(?P<day>\d?\d)(?: \(evil\))? (?P<month>\d?\d) (?P<year>\d\d))\)(?: \(evil\))?\..+"
+    r"^(?P<title>[^\(\)]+)(?: \((?P<full_date>(?P<day>\d?\d) (?P<month>\d?\d) (?P<year>\d\d))\))?\..+$"
 )
 duet_date_regex = v3_date_regex
 
@@ -20,16 +21,29 @@ duet_date_regex = v3_date_regex
 @dataclass
 class ParsedFile:
     title: str
-    date: date
+    date: Optional[date]
     filename: str
 
 
-def parse_filename(filename: str) -> ParsedFile:
-    regexes = [v3_date_regex, v1_date_regex, evil_date_regex, duet_date_regex]
+def evil_preprocess(filename: str) -> str:
+    return filename.replace(" (evil)", "")
 
-    for regex in regexes:
+
+def parse_filename(filename: str) -> ParsedFile:
+    regexes = [
+        (evil_preprocess, evil_date_regex),
+        (None, v3_date_regex),
+        (None, v1_date_regex),
+        (None, duet_date_regex),
+    ]
+
+    for preprocess, regex in regexes:
+        iter_fname = filename
         try:
-            parsed = apply_regex(filename, regex)
+            if preprocess:
+                iter_fname = preprocess(iter_fname)
+
+            parsed = apply_regex(iter_fname, regex)
             return parsed
         except Exception as _:
             continue
@@ -38,7 +52,7 @@ def parse_filename(filename: str) -> ParsedFile:
 
 
 def apply_regex(filename: str, regex: re.Pattern[str]) -> ParsedFile:
-    matches = v3_date_regex.search(filename)
+    matches = regex.search(filename)
 
     if matches is None:
         raise Exception("no match")
@@ -49,9 +63,12 @@ def apply_regex(filename: str, regex: re.Pattern[str]) -> ParsedFile:
     month = matches["month"]
     year = matches["year"]
 
-    return ParsedFile(
-        song_title, date(int(f"20{year}"), int(month), int(day)), filename
-    )
+    if any(v is None for v in [day, month, year]):
+        return ParsedFile(song_title, None, filename)
+    else:
+        return ParsedFile(
+            song_title, date(int(f"20{year}"), int(month), int(day)), filename
+        )
 
 
 def parse_filename_v1(filename: str) -> ParsedFile: ...
