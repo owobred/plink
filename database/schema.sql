@@ -19,6 +19,7 @@ create table segments (
     song_id bigint not null references songs(id),
     segment_index bigint not null,
     -- vector is size of fft output as each is a line of the spectrogram
+    -- from process_cli, this is SPECTROGRAM_CONFIG.fft_len / 2
     vec vector(640) not null,
     start_ts_ms bigint not null,
     end_ts_ms bigint not null,
@@ -31,6 +32,7 @@ create table segments (
 -- for building index consider using (make larger if possible):
 -- SET max_parallel_maintenance_workers = 7;
 -- SET maintenance_work_mem = '10GB';
+-- It might also be wise to increase max_parallel_workers
 
 -- furthermore, I would suggest initalizing the database *without* an index
 -- and adding the index once all of the vectors are inserted

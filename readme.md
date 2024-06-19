@@ -9,7 +9,7 @@ A mediocre version of shazam designed specifically for identifying what song neu
         2. The `singer_id` corresponds to an entry in the `singers` table
 
 > [!warning]
-> If you have an index setup inserting each song will take a *really* long time
+> If you have an index setup inserting each song will take a *really* long time, and it might be faster to drop the index, insert all the segments and then rebuild the index
 
 ## Matching
 1. get any sample of a single song (can be full or partial) and pass it through
