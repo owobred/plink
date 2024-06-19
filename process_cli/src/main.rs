@@ -314,11 +314,12 @@ async fn discover_song(
         })
     }
 
+    info!(timings=?result.timings, "completed");
     info!("top {n_results} matches");
-    for entry in &result.entries {
+    for (index, entry) in result.entries.iter().enumerate() {
         info!(
-            "{} [id={}]: score={}",
-            entry.song.title, entry.song.id, entry.score
+            "{: >3}: {} [id={}]: score={}",
+            index + 1, entry.song.title, entry.song.id, entry.score
         );
     }
 
