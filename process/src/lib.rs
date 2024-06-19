@@ -104,7 +104,6 @@ impl Default for SpectrogramConfig {
         Self {
             fft_len: 80,
             overlap: 8,
-            // samplerate: 48_000,
         }
     }
 }

@@ -1,20 +1,20 @@
 #[derive(Debug)]
 pub struct Singer {
-    pub id: u16,
+    pub id: i16,
     pub name: String,
 }
 
 #[derive(Debug)]
 
 pub struct Song {
-    pub id: u64,
+    pub id: i64,
     pub metadata: SongMetadata,
 }
 
 #[derive(Debug)]
 pub struct SongMetadata {
     pub title: String,
-    pub singer_id: u16,
+    pub singer_id: i16,
     pub date_first_sung: time::Date,
     pub local_path: String,
 }

@@ -3,6 +3,7 @@ use tracing::{debug, instrument};
 
 pub mod models;
 
+#[derive(Clone)]
 pub struct Database {
     pool: sqlx::Pool<sqlx::Postgres>,
 }
@@ -61,7 +62,8 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.insert_sectrogram_for_song(song_id, spectrogram, samplerate, fft_size, fft_overlap).await?;
+        self.insert_sectrogram_for_song(song_id, spectrogram, samplerate, fft_size, fft_overlap)
+            .await?;
 
         Ok(song_id)
     }
@@ -109,5 +111,29 @@ impl Database {
         debug!(n_rows = rows_affected, "affected rows");
 
         Ok(())
+    }
+
+    pub async fn get_song(&self, song_id: i64) -> Result<Option<models::Song>, sqlx::Error> {
+        let r: Option<(i64, String, i16, time::Date, String)> = sqlx::query_as(
+            "select id, title, singer_id, date_first_sung, local_path from songs where id = $1",
+        )
+        .bind(song_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (_, title, singer_id, date_first_sung, local_path) = match r {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        Ok(Some(models::Song {
+            id: song_id,
+            metadata: models::SongMetadata {
+                title,
+                singer_id,
+                date_first_sung,
+                local_path,
+            },
+        }))
     }
 }
