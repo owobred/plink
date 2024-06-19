@@ -15,8 +15,8 @@ pub struct Song {
 pub struct SongMetadata {
     pub title: String,
     pub singer_id: i16,
-    pub date_first_sung: time::Date,
-    pub local_path: String,
+    pub date_first_sung: Option<time::Date>,
+    pub local_path: Option<String>,
 }
 
 #[derive(Debug)]

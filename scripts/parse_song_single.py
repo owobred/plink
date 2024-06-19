@@ -16,9 +16,11 @@ print(
         {
             "success": True,
             "title": parsed.title,
-            "day": parsed.date.day,
-            "month": parsed.date.month,
-            "year": parsed.date.year,
+            "date": {
+                "day": parsed.date.day,
+                "month": parsed.date.month,
+                "year": parsed.date.year,
+            },
             "singer_id": 2,
         }
     )

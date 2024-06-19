@@ -116,12 +116,13 @@ impl Database {
     }
 
     pub async fn get_song(&self, song_id: i64) -> Result<Option<models::Song>, sqlx::Error> {
-        let results: Option<(i64, String, i16, time::Date, String)> = sqlx::query_as(
-            "select id, title, singer_id, date_first_sung, local_path from songs where id = $1",
-        )
-        .bind(song_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let results: Option<(i64, String, i16, Option<time::Date>, Option<String>)> =
+            sqlx::query_as(
+                "select id, title, singer_id, date_first_sung, local_path from songs where id = $1",
+            )
+            .bind(song_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         let (_, title, singer_id, date_first_sung, local_path) = match results {
             Some(r) => r,

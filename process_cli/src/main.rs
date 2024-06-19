@@ -33,7 +33,7 @@ enum Command {
         // TODO: figure out how to make clap parse the date
         /// The date this song was sung at, in `dd/mm/yyyy` format
         #[arg(long, short)]
-        sung_at: String,
+        sung_at: Option<String>,
     },
     /// Upload many songs to the database
     UploadBulk {
@@ -41,7 +41,7 @@ enum Command {
         directory: PathBuf,
         /// The shell script to use to parse filenames
         /// should be able to be substituted into `sh {shell_script} {file_path}`
-        /// 
+        ///
         /// The script should return a json dictionary
         /// On success, it should be in the form
         /// ```json
@@ -119,7 +119,7 @@ async fn main() {
                 &title,
                 singer_id,
                 &db,
-                time::Date::parse(&sung_at, DATE_FORMAT).unwrap(),
+                sung_at.map(|date| time::Date::parse(&date, DATE_FORMAT).unwrap()),
             )
             .await
         }
@@ -136,7 +136,18 @@ async fn main() {
             max_concurrency,
             json,
             n_matches,
-        } => discover_song(&path, &db, max_distance, results_per, max_concurrency, json, n_matches).await,
+        } => {
+            discover_song(
+                &path,
+                &db,
+                max_distance,
+                results_per,
+                max_concurrency,
+                json,
+                n_matches,
+            )
+            .await
+        }
     };
 }
 
@@ -145,7 +156,7 @@ async fn upload_song(
     title: &str,
     singer_id: usize,
     db_url: &str,
-    sung_at: time::Date,
+    sung_at: Option<time::Date>,
 ) {
     let db = database::Database::connect(db_url)
         .await
@@ -165,7 +176,7 @@ async fn upload_song(
             title: title.to_string(),
             singer_id: singer_id as i16,
             date_first_sung: sung_at,
-            local_path: file.to_str().unwrap().to_string(),
+            local_path: Some(file.to_str().unwrap().to_string()),
         },
         SPECTROGRAM_CONFIG,
     )
@@ -223,26 +234,29 @@ async fn upload_bulk(directory: PathBuf, executable: &str, db: &str) {
                 let metadata = match command_result {
                     ParseResult::Parsed {
                         title,
-                        day,
-                        month,
-                        year,
+                        date,
                         singer_id,
                     } => {
-                        let date =
-                            time::Date::parse(&format!("{day:02}/{month:02}/{year}"), DATE_FORMAT)
-                                .expect("failed to parse date somehow");
+                        let date = date.map(|date| {
+                            time::Date::parse(
+                                &format!("{:02}/{:02}/{}", date.day, date.month, date.year),
+                                DATE_FORMAT,
+                            )
+                            .expect("failed to parse date somehow")
+                        });
                         debug!(title, ?date, "got song metadata");
                         database::models::SongMetadata {
                             title,
                             singer_id: singer_id as i16,
                             date_first_sung: date,
-                            local_path: file
-                                .path()
-                                .canonicalize()
-                                .expect("failed to normalize path")
-                                .to_str()
-                                .unwrap()
-                                .to_string(),
+                            local_path: Some(
+                                file.path()
+                                    .canonicalize()
+                                    .expect("failed to normalize path")
+                                    .to_str()
+                                    .unwrap()
+                                    .to_string(),
+                            ),
                         }
                     }
                     ParseResult::Error { error } => {
@@ -357,7 +371,10 @@ async fn discover_song(
     for (index, entry) in result.entries.iter().enumerate() {
         info!(
             "{: >3}: {} [id={}]: score={}",
-            index + 1, entry.song.title, entry.song.id, entry.score
+            index + 1,
+            entry.song.title,
+            entry.song.id,
+            entry.score
         );
     }
 
@@ -487,14 +504,19 @@ async fn persist_to_db(
 enum ParseResult {
     Parsed {
         title: String,
-        day: usize,
-        month: usize,
-        year: usize,
+        date: Option<ParsedDate>,
         singer_id: usize,
     },
     Error {
         error: String,
     },
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ParsedDate {
+    day: usize,
+    month: usize,
+    year: usize,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -514,8 +536,8 @@ struct DiscoverEntry {
 struct Song {
     id: i64,
     title: String,
-    date_sung: time::Date,
-    file_path: String,
+    date_sung: Option<time::Date>,
+    file_path: Option<String>,
 }
 
 impl From<database::models::Song> for Song {
