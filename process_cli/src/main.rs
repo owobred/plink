@@ -49,6 +49,8 @@ enum Command {
         max_concurrency: usize,
         #[arg(long, short, action = clap::ArgAction::SetTrue)]
         json: bool,
+        #[arg(long, short, default_value_t = 10)]
+        n_results: usize,
     },
 }
 
@@ -95,7 +97,8 @@ async fn main() {
             results_per,
             max_concurrency,
             json,
-        } => discover_song(&path, &db, max_distance, results_per, max_concurrency, json).await,
+            n_results,
+        } => discover_song(&path, &db, max_distance, results_per, max_concurrency, json, n_results).await,
     };
 }
 
@@ -233,6 +236,7 @@ async fn discover_song(
     results_per_query: usize,
     max_concurrency: usize,
     output_json: bool,
+    n_results: usize,
 ) {
     info!("generating spectrogram");
     let start = std::time::Instant::now();
@@ -287,17 +291,15 @@ async fn discover_song(
 
     let singers = db.get_singers().await.expect("failed to fetch from db");
 
-    let n_to_display = 10;
-
     let mut result = DiscoverResult {
-        entries: Vec::with_capacity(n_to_display),
+        entries: Vec::with_capacity(n_results),
         timings: DiscoverTimings {
             spectrogram: spectrogram_time,
             query: query_time,
         },
     };
 
-    for (song_id, score) in &top[..n_to_display] {
+    for (song_id, score) in &top[..n_results] {
         let song_info = db
             .get_song(*song_id)
             .await
@@ -312,7 +314,7 @@ async fn discover_song(
         })
     }
 
-    info!("top {n_to_display} matches");
+    info!("top {n_results} matches");
     for entry in &result.entries {
         info!(
             "{} [id={}]: score={}",
