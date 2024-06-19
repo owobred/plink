@@ -8,7 +8,7 @@ song_path = sys.argv[1]
 try:
     parsed = parse_filename(song_path)
 except Exception as e:
-    print(json.dumps({"success": False, "error": repr(e), "song_name": song_path}))
+    print(json.dumps({"success": False, "error": repr(e)}))
     exit()
 
 print(

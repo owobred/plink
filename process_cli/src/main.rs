@@ -18,39 +18,77 @@ const DATE_FORMAT: &[time::format_description::BorrowedFormatItem<'static>] =
 
 #[derive(Debug, clap::Parser)]
 enum Command {
+    /// Upload a single song to the database
     Upload {
+        /// The path to this song's audio file
         path: PathBuf,
+        /// The title of this song, including any artists
         #[arg(long, short)]
         title: String,
+        /// This song's `singer_id`
         #[arg(long, short)]
         singer_id: usize,
         #[arg(long, short)]
         db: String,
         // TODO: figure out how to make clap parse the date
+        /// The date this song was sung at, in `dd/mm/yyyy` format
         #[arg(long, short)]
         sung_at: String,
     },
+    /// Upload many songs to the database
     UploadBulk {
+        /// The directory to look through
         directory: PathBuf,
+        /// The shell script to use to parse filenames
+        /// should be able to be substituted into `sh {shell_script} {file_path}`
+        /// 
+        /// The script should return a json dictionary
+        /// On success, it should be in the form
+        /// ```json
+        /// {
+        ///     "success": true,
+        ///     "title": String,
+        ///     "day": usize,
+        ///     "month": usize,
+        ///     "year": usize,
+        ///     "singer": usize,
+        /// }
+        /// ```
+        /// On failure it should instead be
+        /// ```json
+        /// {
+        ///     "success": false,
+        ///     "error": String,
+        /// }
+        /// ```
         #[arg(long, short)]
         shell_script: String,
+        /// The url to connect to the database
         #[arg(long, short)]
         db: String,
     },
+    /// See if a song matches any in the database
     Discover {
+        /// The file to load
         path: PathBuf,
+        /// The url to connect to the database
         #[arg(long, short)]
         db: String,
+        /// The maximum distance to look for matching samples
         #[arg(long, short, default_value_t = 200.0)]
         max_distance: f64,
+        /// The maximum number of matching samples to look for
         #[arg(long, short, default_value_t = 40)]
         results_per: usize,
+        /// The number of samples to attempt to match simultaneously
         #[arg(long, short, default_value_t = 200)]
         max_concurrency: usize,
+        /// Make the program output a json dictionary with the results
         #[arg(long, short, action = clap::ArgAction::SetTrue)]
         json: bool,
+        /// How many potential matches should be included in the results?
         #[arg(long, short, default_value_t = 10)]
-        n_results: usize,
+        n_matches: usize,
     },
 }
 
@@ -97,8 +135,8 @@ async fn main() {
             results_per,
             max_concurrency,
             json,
-            n_results,
-        } => discover_song(&path, &db, max_distance, results_per, max_concurrency, json, n_results).await,
+            n_matches,
+        } => discover_song(&path, &db, max_distance, results_per, max_concurrency, json, n_matches).await,
     };
 }
 
@@ -236,7 +274,7 @@ async fn discover_song(
     results_per_query: usize,
     max_concurrency: usize,
     output_json: bool,
-    n_results: usize,
+    n_matches: usize,
 ) {
     info!("generating spectrogram");
     let start = std::time::Instant::now();
@@ -292,14 +330,14 @@ async fn discover_song(
     let singers = db.get_singers().await.expect("failed to fetch from db");
 
     let mut result = DiscoverResult {
-        entries: Vec::with_capacity(n_results),
+        entries: Vec::with_capacity(n_matches),
         timings: DiscoverTimings {
             spectrogram: spectrogram_time,
             query: query_time,
         },
     };
 
-    for (song_id, score) in &top[..n_results] {
+    for (song_id, score) in &top[..n_matches] {
         let song_info = db
             .get_song(*song_id)
             .await
@@ -315,7 +353,7 @@ async fn discover_song(
     }
 
     info!(timings=?result.timings, "completed");
-    info!("top {n_results} matches");
+    info!("top {n_matches} matches");
     for (index, entry) in result.entries.iter().enumerate() {
         info!(
             "{: >3}: {} [id={}]: score={}",
@@ -419,22 +457,6 @@ fn handle_file(
     let elapsed = start.elapsed();
     debug!(?elapsed, "spectrogram generated");
     spectrogram
-}
-
-fn debug_to_image(spectrogram: &Vec<Vec<f32>>) {
-    let (width, height) = (spectrogram.len(), spectrogram[0].len());
-    let mut canvas: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
-        image::ImageBuffer::new(height as u32, width as u32);
-    canvas
-        .rows_mut()
-        .zip(spectrogram.into_iter())
-        .for_each(|(row, spect_row)| {
-            row.zip(spect_row.into_iter()).for_each(|(canvas, value)| {
-                *canvas = image::Rgb([(value * u8::MAX as f32) as u8; 3])
-            })
-        });
-    let get_rotated_idiot = image::imageops::rotate270(&canvas);
-    get_rotated_idiot.save("spect.png").unwrap();
 }
 
 #[instrument(skip_all, level = "trace")]
