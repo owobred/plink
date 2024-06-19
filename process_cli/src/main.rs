@@ -1,12 +1,9 @@
-use clap::{arg, command, value_parser, Parser};
+use clap::{arg, Parser};
 use process::SpectrogramConfig;
 use rubato::Resampler;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use symphonia::core::{
-    audio::{AudioBuffer, Signal},
-    formats::FormatOptions,
-    io::MediaSourceStream,
-    meta::MetadataOptions,
+    audio::AudioBuffer, formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions,
     probe::Hint,
 };
 use tracing::{debug, info, instrument, trace, warn};
