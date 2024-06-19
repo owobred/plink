@@ -48,6 +48,8 @@ enum Command {
         max_distance: f64,
         #[arg(long, short, default_value_t = 40)]
         results_per: usize,
+        #[arg(long, short, default_value_t = 200)]
+        max_concurrency: usize,
     },
 }
 
@@ -89,7 +91,8 @@ async fn main() {
             db,
             max_distance,
             results_per,
-        } => discover_song(&path, &db, max_distance, results_per).await,
+            max_concurrency,
+        } => discover_song(&path, &db, max_distance, results_per, max_concurrency).await,
     };
 }
 
@@ -220,7 +223,13 @@ async fn upload_bulk(directory: PathBuf, executable: &str, db: &str) {
     info!(ok, err, "upload finished");
 }
 
-async fn discover_song(path: &PathBuf, db_url: &str, max_distance: f64, results_per_query: usize) {
+async fn discover_song(
+    path: &PathBuf,
+    db_url: &str,
+    max_distance: f64,
+    results_per_query: usize,
+    max_concurrency: usize,
+) {
     info!("generating spectrogram");
     let spectrogram = handle_file(path, SPECTROGRAM_CONFIG);
 
@@ -231,18 +240,35 @@ async fn discover_song(path: &PathBuf, db_url: &str, max_distance: f64, results_
     let mut hashmap = std::collections::HashMap::new();
     info!("querying database");
 
-    for sample in &spectrogram {
-        let closest = db
-            .find_similar_to(sample.to_owned(), max_distance, results_per_query as i64)
-            .await
-            .unwrap();
-        let n = closest.len();
+    let (send, mut recv) = tokio::sync::mpsc::unbounded_channel();
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
 
-        for (index, (song_id, _sample_id, _distance)) in closest.into_iter().enumerate() {
+    for sample in spectrogram {
+        let db = db.clone();
+        let send = send.clone();
+        let semaphore = semaphore.clone();
+
+        tokio::task::spawn(async move {
+            let _guard = semaphore
+                .acquire()
+                .await
+                .expect("failed to aquire semaphore");
+            let result = db
+                .find_similar_to(sample, max_distance, results_per_query as i64)
+                .await
+                .expect("failed to query database");
+            send.send(result).expect("failed to send to mpsc");
+        });
+    }
+
+    drop(send);
+
+    while let Some(result) = recv.recv().await {
+        let n = result.len();
+        for (index, (song_id, _sample_id, _distance)) in result.into_iter().enumerate() {
             if !hashmap.contains_key(&song_id) {
                 hashmap.insert(song_id, 0);
             }
-            // TODO: some kind of avg distance vs number of occurances would be nice
             *hashmap.get_mut(&song_id).unwrap() += n - index;
         }
     }
