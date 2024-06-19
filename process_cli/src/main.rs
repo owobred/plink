@@ -228,10 +228,16 @@ async fn upload_bulk(directory: PathBuf, executable: &str, db: &str, max_concurr
                     .acquire()
                     .await
                     .expect("faile to acquire semaphore");
-                let already_saved = db.song_already_saved(&full_file_path).await.expect("failed to query db");
+                let already_saved = db
+                    .song_already_saved(&full_file_path)
+                    .await
+                    .expect("failed to query db");
 
                 if already_saved {
-                    warn!(path=full_file_path, "skipping file as path is already in database");
+                    warn!(
+                        path = full_file_path,
+                        "skipping file as path is already in database"
+                    );
                     return;
                 }
 
@@ -368,11 +374,17 @@ async fn discover_song(
             .expect("database error")
             .unwrap();
         let singer_id = song_info.metadata.singer_id;
+        let song_duration_ms = db
+            .get_song_duration_ms(*song_id)
+            .await
+            .expect("database error")
+            .unwrap();
 
         result.entries.push(DiscoverEntry {
             song: song_info.into(),
             singer_name: singers.get(&singer_id).unwrap().name.clone(),
             score: *score,
+            song_duration_ms,
         })
     }
 
@@ -540,6 +552,7 @@ struct DiscoverEntry {
     song: Song,
     singer_name: String,
     score: usize,
+    song_duration_ms: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

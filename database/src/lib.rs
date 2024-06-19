@@ -162,4 +162,12 @@ impl Database {
             .await
             .map(|n: Option<(i32,)>| n.is_some())
     }
+
+    pub async fn get_song_duration_ms(&self, song_id: i64) -> Result<Option<i64>, sqlx::Error> {
+        sqlx::query_as("select max(end_ts_ms) from segments where song_id = $1")
+            .bind(song_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map(|ok| ok.map(|(v,): (i64,)| v))
+    }
 }
