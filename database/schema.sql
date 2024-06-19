@@ -28,7 +28,7 @@ create table segments (
     primary key (song_id, segment_index)
 );
 
--- for building index consider using:
+-- for building index consider using (make larger if possible):
 -- SET max_parallel_maintenance_workers = 7;
 -- SET maintenance_work_mem = '10GB';
 

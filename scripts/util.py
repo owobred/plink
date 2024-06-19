@@ -10,7 +10,7 @@ v3_date_regex = re.compile(
     r"(?P<title>.+) \((?P<full_date>(?P<day>\d?\d) (?P<month>\d?\d) (?P<year>\d\d))\)"
 )
 v1_date_regex = re.compile(
-    r"\[(?P<full_date>(?P<month>\d?\d)(?:-|／)(?P<day>\d?\d)(?:-|／)(?P<year>\d\d))\] (?P<title>.+)(?: \[\d+\])?\..+"
+    r"\[(?P<full_date>(?P<month>\d?\d)(?:-|／)(?P<day>\d?\d)(?:-|／)(?P<year>\d\d))\] (?P<title>[^\[\]]+)(?: \[\d+\] ?)?\..+"
 )
 evil_date_regex = re.compile(
     r"^(?P<title>[^\(\)]+)(?: \((?P<full_date>(?P<day>\d?\d) (?P<month>\d?\d) (?P<year>\d\d))\))?\..+$"
@@ -31,9 +31,9 @@ def evil_preprocess(filename: str) -> str:
 
 def parse_filename(filename: str) -> ParsedFile:
     regexes = [
+        (None, v1_date_regex),
         (evil_preprocess, evil_date_regex),
         (None, v3_date_regex),
-        (None, v1_date_regex),
         (None, duet_date_regex),
     ]
 

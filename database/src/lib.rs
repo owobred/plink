@@ -154,4 +154,12 @@ impl Database {
             .map(|singer| (singer.id, singer))
             .collect())
     }
+
+    pub async fn song_already_saved(&self, full_file_path: &str) -> Result<bool, sqlx::Error> {
+        sqlx::query_as("select 1 from songs where local_path = $1")
+            .bind(full_file_path)
+            .fetch_optional(&self.pool)
+            .await
+            .map(|n: Option<(i32,)>| n.is_some())
+    }
 }

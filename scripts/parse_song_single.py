@@ -18,7 +18,7 @@ if parsed.date is None:
                 "success": True,
                 "title": parsed.title,
                 "date": None,
-                "singer_id": 2,
+                "singer_id": 1,
             }
         )
     )
@@ -33,7 +33,7 @@ else:
                     "month": parsed.date.month,
                     "year": parsed.date.year,
                 },
-                "singer_id": 2,
+                "singer_id": 1,
             }
         )
     )

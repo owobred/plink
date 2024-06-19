@@ -8,6 +8,9 @@ A mediocre version of shazam designed specifically for identifying what song neu
         1. If writing your own shell script, then check out [the default](scripts/single_wrapper.sh)
         2. The `singer_id` corresponds to an entry in the `singers` table
 
+> [!warning]
+> If you have an index setup inserting each song will take a *really* long time
+
 ## Matching
 1. get any sample of a single song (can be full or partial) and pass it through
 2. enter `/process_cli` use `cargo run -r -- discover --db <url> <file_path>`

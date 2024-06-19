@@ -66,6 +66,9 @@ enum Command {
         /// The url to connect to the database
         #[arg(long, short)]
         db: String,
+        /// The number of songs to upload simultaneously
+        #[arg(long, short, default_value_t = 64)]
+        max_concurrency: usize,
     },
     /// See if a song matches any in the database
     Discover {
@@ -127,7 +130,8 @@ async fn main() {
             directory,
             shell_script,
             db,
-        } => upload_bulk(directory, &shell_script, &db).await,
+            max_concurrency,
+        } => upload_bulk(directory, &shell_script, &db, max_concurrency).await,
         Command::Discover {
             path,
             db,
@@ -185,13 +189,13 @@ async fn upload_song(
     info!(?elapsed, "completed insert");
 }
 
-async fn upload_bulk(directory: PathBuf, executable: &str, db: &str) {
+async fn upload_bulk(directory: PathBuf, executable: &str, db: &str, max_concurrency: usize) {
     let db = database::Database::connect(db)
         .await
         .expect("failed to connect to database");
 
     let mut handles = Vec::new();
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(6));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
 
     for dir in std::fs::read_dir(directory).expect("failed to read directory") {
         let file = match dir {
@@ -211,12 +215,26 @@ async fn upload_bulk(directory: PathBuf, executable: &str, db: &str) {
             let semaphore = semaphore.clone();
             let db = db.clone();
             let shell_script = executable.to_string();
+            let full_file_path = file
+                .path()
+                .canonicalize()
+                .expect("failed to normalize path")
+                .to_str()
+                .unwrap()
+                .to_string();
 
             tokio::task::spawn(async move {
                 let _guard = semaphore
                     .acquire()
                     .await
                     .expect("faile to acquire semaphore");
+                let already_saved = db.song_already_saved(&full_file_path).await.expect("failed to query db");
+
+                if already_saved {
+                    warn!(path=full_file_path, "skipping file as path is already in database");
+                    return;
+                }
+
                 let command_output = tokio::process::Command::new("sh")
                     .arg(shell_script)
                     .arg(file.file_name())
@@ -226,7 +244,6 @@ async fn upload_bulk(directory: PathBuf, executable: &str, db: &str) {
                     .wait_with_output()
                     .await
                     .expect("failed to get command output");
-                println!("{:?}", String::from_utf8_lossy(&command_output.stdout));
                 let command_result: ParseResult =
                     serde_json::from_slice(command_output.stdout.trim_ascii_end())
                         .expect("failed to parse command output");
@@ -249,14 +266,7 @@ async fn upload_bulk(directory: PathBuf, executable: &str, db: &str) {
                             title,
                             singer_id: singer_id as i16,
                             date_first_sung: date,
-                            local_path: Some(
-                                file.path()
-                                    .canonicalize()
-                                    .expect("failed to normalize path")
-                                    .to_str()
-                                    .unwrap()
-                                    .to_string(),
-                            ),
+                            local_path: Some(full_file_path),
                         }
                     }
                     ParseResult::Error { error } => {
