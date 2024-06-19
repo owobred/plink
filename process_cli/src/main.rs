@@ -8,7 +8,7 @@ use symphonia::core::{
 };
 use tracing::{debug, info, instrument, trace, warn};
 
-const TARGET_SAMPLERATE_HZ: usize = 40_000;
+const TARGET_SAMPLERATE_HZ: usize = 30_000;
 const SPECTROGRAM_CONFIG: &SpectrogramConfig = &process::SpectrogramConfig {
     fft_len: 1280,
     overlap: 320,
