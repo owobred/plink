@@ -277,7 +277,9 @@ async fn discover_song(
     top.sort_by_key(|(_, v)| *v);
     top.reverse();
 
-    for (song_id, score) in &top[..10] {
+    let n_to_display = 10;
+    info!("top {n_to_display} matches");
+    for (song_id, score) in &top[..n_to_display] {
         let song_info = db
             .get_song(*song_id)
             .await
