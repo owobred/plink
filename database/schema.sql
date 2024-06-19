@@ -32,6 +32,7 @@ create table segments (
 -- for building index consider using (make larger if possible):
 -- SET max_parallel_maintenance_workers = 7;
 -- SET maintenance_work_mem = '10GB';
+-- ^ you want this to be equal to your `shm-size` from setup.md
 -- It might also be wise to increase max_parallel_workers
 
 -- furthermore, I would suggest initalizing the database *without* an index
